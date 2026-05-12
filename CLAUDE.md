@@ -8,6 +8,12 @@ Single-page portfolio with smooth scroll navigation. Built with Flutter Web, BLo
 
 Planned content management direction: Firebase-backed portfolio content with a protected `/admin` mini dashboard. Public content should read from Firestore; admin CRUD should use Firebase Auth + Firestore writes.
 
+Implemented:
+- Firebase init in `main.dart` with `persistenceEnabled: false` for web (avoids Safari WebChannel cache issues).
+- Public portfolio projects section reads Firestore `projects` collection via a stream.
+- `/admin` route with Firebase Auth email/password login and Firestore CRUD.
+- Firestore security rules restrict writes to an admin email allowlist.
+
 ## Commands
 
 ```bash
@@ -22,6 +28,9 @@ flutter analyze
 
 # Release build
 flutter build web --release
+
+# Deploy to Firebase Hosting
+firebase deploy --only hosting
 
 # Serve release build locally
 cd build/web && python3 -m http.server 8080
@@ -45,8 +54,8 @@ lib/
 │   ├── about/
 │   ├── skills/
 │   ├── experience/
-│   ├── projects/        # Portfolio/project list section
-│   ├── admin/           # Planned Firebase Auth + Firestore CRUD dashboard
+│   ├── projects/        # Firestore-backed portfolio list section
+│   ├── admin/           # Firebase Auth login + Firestore CRUD dashboard
 │   └── contact/
 └── main.dart
 ```
@@ -67,7 +76,9 @@ BLoC (`flutter_bloc ^8.x`). Each feature has one BLoC with a single `LoadRequest
 
 ## Navigation
 
-`go_router ^14.x` currently serves `/` for the public portfolio. Planned admin route: `/admin` for protected content management.
+`go_router ^14.x` serves:
+- `/` public portfolio
+- `/admin` protected content management (Firebase Auth)
 
 Navigation between public sections uses `SectionKeys.scrollTo(PortfolioSection.xxx)` — `Scrollable.ensureVisible` with 700ms `easeInOutCubic` curve.
 
@@ -124,7 +135,7 @@ Animations: `flutter_animate ^4.x` — entrance animations use `fadeIn` + `slide
 Static personal info, copy, and URLs live in:
 `lib/core/constants/app_strings.dart`
 
-Portfolio/project content is moving to Firebase Firestore. Use collection `projects` with fields:
+Portfolio/project content lives in Firebase Firestore. Collection `projects`:
 
 ```json
 {
@@ -141,7 +152,31 @@ Portfolio/project content is moving to Firebase Firestore. Use collection `proje
 }
 ```
 
-Public portfolio should query only `isPublished == true`, ordered by `sortOrder`. Admin UI should list all projects.
+Public portfolio queries `isPublished == true` ordered by `sortOrder` (requires Firestore composite index on `isPublished` asc + `sortOrder` asc). Admin UI lists all projects.
+
+## Firestore Security Rules
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == "arifana.dev@gmail.com";
+    }
+
+    match /projects/{projectId} {
+      allow read: if resource.data.isPublished == true || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+  }
+}
+```
+
+## Deployment Notes
+
+- `firebase.json` uses `no-cache` for `index.html`, `*.js`, `*.css`, `*.wasm`, `*.json` because Flutter web does not hash those filenames between builds. Only files under `assets/` and `canvaskit/` (content-hashed) use long `max-age, immutable` cache.
+- `web/index.html` unregisters any existing service worker on load so returning visitors always pick up the latest build without manual cache clears.
 
 ## Dependencies
 
@@ -152,7 +187,7 @@ go_router: ^14.x        # Routing
 flutter_animate: ^4.x   # Animations
 url_launcher: ^6.x      # Open URLs / mailto
 google_fonts: ^6.x      # Archivo + Space Grotesk
-firebase_core           # Planned Firebase bootstrap
-firebase_auth           # Planned admin login
-cloud_firestore         # Planned dynamic portfolio content
+firebase_core: ^4.x     # Firebase bootstrap
+firebase_auth: ^6.x     # Admin login
+cloud_firestore: ^6.x   # Dynamic portfolio content
 ```
