@@ -62,6 +62,14 @@
     <span class="dot"></span>
     <span class="dot"></span>
   </div>
+  <script>
+    // Unregister stale service workers so users always get the latest build.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (var r of registrations) { r.unregister(); }
+      });
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
